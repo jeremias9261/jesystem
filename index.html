@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>JeSystem Pro</title>
+    
+    <link rel="manifest" href="manifest.json">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="JeSystem Pro">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        :root { --bg: #f0f2f5; --white: #ffffff; --primary: #007aff; --success: #34c759; --danger: #ff3b30; --warning: #ffcc00; --dark: #1c1c1e; --gray: #8e8e93; }
+        
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding-bottom: 20px; color: var(--dark); overflow-x: hidden; min-height: 100vh; display: flex; flex-direction: column; }
+
+        /* Bloqueio total do fundo quando modal aberta */
+        body.modal-open { overflow: hidden; height: 100vh; }
+        body.modal-open .dashboard, body.modal-open .card-resumo, body.modal-open .home-notifications { pointer-events: none; filter: blur(2px); }
+
+        /* Header */
+        .header { background: var(--white); padding: 25px 20px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #ddd; position: sticky; top:0; z-index:100; }
+        .header h1 { margin: 0; font-size: 18px; font-weight: 800; color: var(--primary); }
+
+        /* Resumo */
+        .card-resumo { background: var(--dark); color: white; margin: 15px; padding: 20px; border-radius: 25px; box-shadow: 0 10px 20px rgba(0,0,0,0.15); flex-shrink: 0; }
+        .saldo-txt { font-size: 28px; font-weight: 800; margin: 5px 0; }
+        .saldo-negativo { color: var(--danger) !important; }
+        
+        /* Dashboard */
+        .dashboard { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; padding: 10px 20px; flex-shrink: 0; }
+        .icon-card { background: var(--white); padding: 20px 10px; border-radius: 22px; text-align: center; box-shadow: 0 4px 12px rgba(0,0,0,0.05); cursor: pointer; border: 1px solid #eee; transition: 0.2s; }
+        .icon-card:active { transform: scale(0.9); }
+        .icon-card i { font-size: 28px; margin-bottom: 8px; display: block; }
+        .icon-card span { font-size: 10px; font-weight: 700; color: #555; text-transform: uppercase; }
+
+        /* Área de Notificações na Home */
+        .home-notifications { flex-grow: 1; padding: 10px 20px; overflow-y: auto; }
+        .notif-item { background: var(--white); padding: 12px 15px; border-radius: 15px; margin-bottom: 10px; display: flex; align-items: center; gap: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); border-left: 5px solid var(--gray); animation: slideIn 0.3s ease-out; }
+        .notif-item i { font-size: 18px; }
+        .notif-danger { border-left-color: var(--danger); }
+        .notif-warning { border-left-color: var(--warning); }
+        .notif-success { border-left-color: var(--primary); }
+        .notif-text { font-size: 13px; font-weight: 600; color: #444; flex: 1; }
+        .notif-text small { display: block; color: var(--gray); font-weight: 400; }
+
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* Modal */
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; backdrop-filter: blur(5px); align-items: center; justify-content: center; pointer-events: auto; }
+        .modal-content { background: var(--white); width: 90%; max-height: 85vh; border-radius: 28px; padding: 25px; overflow-y: auto; position: relative; pointer-events: auto; }
+        .close-modal { position: absolute; top: 15px; right: 20px; font-size: 24px; color: #ccc; cursor: pointer; }
+
+        /* Formulários */
+        label { display: block; font-size: 11px; color: var(--gray); font-weight: 800; margin: 10px 0 2px 5px; text-transform: uppercase; }
+        input, textarea { width: 100%; padding: 14px; margin-bottom: 5px; border-radius: 14px; border: 1px solid #ddd; font-size: 16px; box-sizing: border-box; outline: none; }
+        
+        /* Badges e Lista Ajustada */
+        .dia-semana-badge { background: var(--primary); color: white; padding: 8px 15px; border-radius: 12px; font-size: 13px; font-weight: 800; margin: 20px 0 10px; display: block; text-align: center; }
+        .item-lista { background: #f9f9fb; padding: 15px; border-radius: 15px; margin-bottom: 10px; border-left: 5px solid var(--gray); display: flex; justify-content: space-between; align-items: center; }
+        .item-info { flex: 1; min-width: 0; margin-right: 10px; }
+        .item-actions { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+
+        .destaque-paciente { background: #eef6ff; border-left: 8px solid var(--primary); border-top: 1px solid #d0e4ff; }
+        .divida-futura { opacity: 0.6; border-left-style: dashed !important; }
+
+        /* Botões */
+        .btn { width: 100%; padding: 16px; border-radius: 16px; border: none; font-size: 16px; font-weight: 700; cursor: pointer; margin-top: 10px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        
+        .row-check { display: flex; align-items: center; gap: 8px; margin: 10px 0; font-size: 14px; }
+        .row-check input { width: auto; margin: 0; }
+
+        .btn-edit { background: none; border: none; color: var(--primary); font-size: 18px; cursor: pointer; padding: 8px; }
+        .btn-del { background: none; border: none; color: var(--danger); font-size: 18px; cursor: pointer; padding: 8px; }
+
+        /* Calculadora */
+        .calc-display { background: #2c2c2e; color: #fff; text-align: right; padding: 20px; font-size: 24px; border-radius: 15px; margin-bottom: 15px; min-height: 40px; }
+        .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+        .calc-btn { background: #e5e5ea; border: none; padding: 15px; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        .calc-btn-op { background: var(--warning); color: #000; }
+        .calc-btn-eq { background: var(--primary); color: #fff; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>JeSystem Pro</h1>
+        <button onclick="togglePrivacidade()" style="background:none; border:none; color: var(--primary); font-size: 20px;"><i id="eye-icon" class="fa-solid fa-eye"></i></button>
+    </div>
+
+    <div class="card-resumo">
+        <small style="opacity: 0.7;" id="label-saldo">SALDO REAL (LIMPO)</small>
+        <div id="main-result" class="saldo-txt">R$ 0,00</div>
+        <div style="display:flex; justify-content: space-between; margin-top:10px; font-size: 12px;">
+            <span>Dívidas Mês: <b id="sum-out" style="color:var(--warning)">R$ 0,00</b></span>
+            <span>Ganhos Mês: <b id="sum-in" style="color:var(--success)">R$ 0,00</b></span>
+        </div>
+    </div>
+
+    <div class="dashboard">
+        <div class="icon-card" onclick="openModal('mod-pac')"><i class="fa-solid fa-user-md" style="color:var(--primary)"></i><span>Paciente</span></div>
+        <div class="icon-card" onclick="openModal('mod-eve')"><i class="fa-solid fa-calendar-check" style="color:#5856d6"></i><span>Evento</span></div>
+        <div class="icon-card" onclick="openModal('mod-rec')"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--success)"></i><span>Receita</span></div>
+        <div class="icon-card" onclick="openModal('mod-div')"><i class="fa-solid fa-file-invoice" style="color:var(--warning)"></i><span>Dívida</span></div>
+        <div class="icon-card" onclick="openModal('mod-gas')"><i class="fa-solid fa-cart-arrow-down" style="color:var(--danger)"></i><span>Gasto</span></div>
+        <div class="icon-card" onclick="openModal('mod-fut-rec')"><i class="fa-solid fa-money-bill-trend-up" style="color:#5ac8fa"></i><span>Receber</span></div>
+        <div class="icon-card" onclick="openModal('mod-age')"><i class="fa-solid fa-calendar-alt" style="color:#5ac8fa"></i><span>Agenda</span></div>
+        <div class="icon-card" onclick="openModal('mod-ext')"><i class="fa-solid fa-history" style="color:#ff9500"></i><span>Extrato</span></div>
+        <div class="icon-card" onclick="openModal('mod-calc')"><i class="fa-solid fa-calculator" style="color:#1c1c1e"></i><span>Calc</span></div>
+    </div>
+
+    <div class="home-notifications" id="home-notif-area">
+        <h4 style="margin: 0 0 10px 5px; font-size: 14px; color: var(--gray);">NOTIFICAÇÕES E ALERTAS</h4>
+        <div id="notif-content"></div>
+    </div>
+
+    <div id="mod-pac" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-pac')">&times;</span>
+            <h3 id="tit-pac">Novo Paciente</h3>
+            <input type="hidden" id="edit-pac-idx" value="">
+            <label>Data do Atendimento</label>
+            <input type="date" id="pac-date">
+            <label>Hora</label>
+            <input type="time" id="pac-time">
+            <input type="text" id="pac-nome" placeholder="Nome Completo">
+            <label>Valor da Sessão R$</label>
+            <input type="number" id="pac-val" placeholder="0.00">
+            <label>Observação</label>
+            <textarea id="pac-obs" rows="2"></textarea>
+            <div class="row-check">
+                <input type="checkbox" id="pac-pago"> <label>Já está pago?</label>
+            </div>
+            <button class="btn btn-primary" onclick="addPac()">Salvar Agendamento</button>
+        </div>
+    </div>
+    
+    <div id="mod-eve" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-eve')">&times;</span>
+            <h3 id="tit-eve">Novo Evento</h3>
+            <input type="hidden" id="edit-eve-idx" value="">
+            <label>Data e Hora do Compromisso</label>
+            <input type="datetime-local" id="eve-date">
+            <label>O que é?</label>
+            <input type="text" id="eve-desc" placeholder="Ex: Reunião">
+            <button class="btn btn-primary" onclick="addEve()">Salvar na Agenda</button>
+        </div>
+    </div>
+
+    <div id="mod-rec" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-rec')">&times;</span>
+            <h3>Adicionar Receita</h3>
+            <label>Origem do Dinheiro</label>
+            <input type="text" id="rec-desc">
+            <label>Valor R$</label>
+            <input type="number" id="rec-val" placeholder="0.00">
+            <button class="btn btn-success" onclick="finReg('in')">Confirmar Entrada</button>
+        </div>
+    </div>
+
+    <div id="mod-gas" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-gas')">&times;</span>
+            <h3>Gasto de Agora</h3>
+            <label>Com o que gastou?</label>
+            <input type="text" id="gas-desc">
+            <label>Valor R$</label>
+            <input type="number" id="gas-val" placeholder="0.00">
+            <button class="btn btn-primary" style="background:var(--danger)" onclick="finReg('out')">Registrar Saída</button>
+        </div>
+    </div>
+
+    <div id="mod-div" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-div')">&times;</span>
+            <h3 id="tit-div">Agendar Conta</h3>
+            <input type="hidden" id="edit-div-idx" value="">
+            <label>Vencimento</label>
+            <input type="date" id="div-date">
+            <label>Nome da Conta</label>
+            <input type="text" id="div-desc">
+            <label>Valor R$</label>
+            <input type="number" id="div-val" placeholder="0.00">
+            <div class="row-check">
+                <input type="checkbox" id="div-fixa"> <label>Repetir todo mês</label>
+            </div>
+            <button class="btn btn-primary" style="background:var(--warning); color:black" onclick="addDiv()">Agendar Pagamento</button>
+        </div>
+    </div>
+
+    <div id="mod-fut-rec" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-fut-rec')">&times;</span>
+            <h3>Agendar Recebimento</h3>
+            <input type="hidden" id="edit-frec-idx" value="">
+            <label>Data para Receber</label>
+            <input type="date" id="frec-date">
+            <label>Descrição</label>
+            <input type="text" id="frec-desc">
+            <label>Valor R$</label>
+            <input type="number" id="frec-val" placeholder="0.00">
+            <button class="btn btn-primary" style="background:#5ac8fa; color:white" onclick="addFutRec()">Agendar</button>
+        </div>
+    </div>
+
+    <div id="mod-age" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-age')">&times;</span>
+            <h3>Agenda Unificada</h3>
+            <div id="list-agenda"></div>
+        </div>
+    </div>
+
+    <div id="mod-ext" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-ext')">&times;</span>
+            <h3>Extrato e Pendências</h3>
+            <div id="list-div-pendentes"></div>
+            <hr>
+            <h4 style="color:var(--success)">A Receber (Pendentes)</h4>
+            <div id="list-rec-pendentes"></div>
+            <hr>
+            <div id="list-historico"></div>
+            <button class="btn btn-danger" onclick="limparHistorico()" style="font-size: 12px; padding: 10px;">Limpar Histórico</button>
+        </div>
+    </div>
+
+    <div id="mod-calc" class="modal">
+        <div class="modal-content">
+            <span class="close-modal" onclick="closeModal('mod-calc')">&times;</span>
+            <h3>Calculadora</h3>
+            <div class="calc-display" id="display">0</div>
+            <div class="calc-grid">
+                <button class="calc-btn" onclick="clearCalc()">C</button>
+                <button class="calc-btn" onclick="inputCalc('(')">(</button>
+                <button class="calc-btn" onclick="inputCalc(')')">)</button>
+                <button class="calc-btn calc-btn-op" onclick="inputCalc('/')">÷</button>
+                <button class="calc-btn" onclick="inputCalc('7')">7</button>
+                <button class="calc-btn" onclick="inputCalc('8')">8</button>
+                <button class="calc-btn" onclick="inputCalc('9')">9</button>
+                <button class="calc-btn calc-btn-op" onclick="inputCalc('*')">×</button>
+                <button class="calc-btn" onclick="inputCalc('4')">4</button>
+                <button class="calc-btn" onclick="inputCalc('5')">5</button>
+                <button class="calc-btn" onclick="inputCalc('6')">6</button>
+                <button class="calc-btn calc-btn-op" onclick="inputCalc('-')">-</button>
+                <button class="calc-btn" onclick="inputCalc('1')">1</button>
+                <button class="calc-btn" onclick="inputCalc('2')">2</button>
+                <button class="calc-btn" onclick="inputCalc('3')">3</button>
+                <button class="calc-btn calc-btn-op" onclick="inputCalc('+')">+</button>
+                <button class="calc-btn" onclick="inputCalc('0')">0</button>
+                <button class="calc-btn" onclick="inputCalc('.')">.</button>
+                <button class="calc-btn" onclick="backCalc()"><i class="fa-solid fa-arrow-left"></i></button>
+                <button class="calc-btn calc-btn-eq" onclick="calculate()">=</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Versão atualizada do Banco para evitar conflitos
+        let db = JSON.parse(localStorage.getItem('jesystem_v14')) || { bal: 0, his: [], div: [], pac: [], eve: [], futRec: [] };
+        let oculto = false;
+
+        function openModal(id) { 
+            document.body.classList.add('modal-open');
+            document.getElementById(id).style.display = 'flex'; 
+        }
+        function closeModal(id) { 
+            document.body.classList.remove('modal-open');
+            document.getElementById(id).style.display = 'none'; 
+            if(id === 'mod-pac') { document.getElementById('tit-pac').innerText = "Novo Paciente"; document.getElementById('edit-pac-idx').value = ""; }
+            if(id === 'mod-eve') { document.getElementById('tit-eve').innerText = "Novo Evento"; document.getElementById('edit-eve-idx').value = ""; }
+            if(id === 'mod-div') { document.getElementById('tit-div').innerText = "Agendar Conta"; document.getElementById('edit-div-idx').value = ""; }
+            if(id === 'mod-fut-rec') { document.getElementById('edit-frec-idx').value = ""; }
+        }
+
+        function getDiaSemana(dataStr) {
+            const dias = ['DOMINGO', 'SEGUNDA-FEIRA', 'TERÇA-FEIRA', 'QUARTA-FEIRA', 'QUINTA-FEIRA', 'SEXTA-FEIRA', 'SÁBADO'];
+            const data = new Date(dataStr + "T12:00:00");
+            return dias[data.getDay()];
+        }
+
+        function render() {
+            const agora = new Date();
+            const mesAtual = agora.getMonth();
+            const anoAtual = agora.getFullYear();
+
+            let dividasContabilizadas = db.div.filter(d => {
+                let dData = new Date(d.date + "T12:00:00");
+                return dData.getFullYear() < anoAtual || (dData.getFullYear() === anoAtual && dData.getMonth() <= mesAtual);
+            });
+
+            let totDivMes = dividasContabilizadas.reduce((a,b)=>a+b.val, 0);
+            let totIn = db.his.filter(h=>h.t==='in').reduce((a,b)=>a+b.v, 0);
+            let saldoReal = db.bal - totDivMes;
+
+            const saldoElement = document.getElementById('main-result');
+            saldoElement.innerText = oculto ? "R$ ••••••" : "R$ " + saldoReal.toLocaleString('pt-BR',{minimumFractionDigits:2});
+            if(saldoReal < 0) { saldoElement.classList.add('saldo-negativo'); } else { saldoElement.classList.remove('saldo-negativo'); }
+
+            document.getElementById('sum-in').innerText = "R$ " + totIn.toLocaleString('pt-BR',{minimumFractionDigits:2});
+            document.getElementById('sum-out').innerText = "R$ " + totDivMes.toLocaleString('pt-BR',{minimumFractionDigits:2});
+
+            // AGENDA
+            const listAge = document.getElementById('list-agenda');
+            listAge.innerHTML = "";
+            let agenda = [...db.pac.map((p, i) => ({...p, tipo: 'PACIENTE', index: i})),...db.eve.map((e, i) => ({...e, tipo: 'EVENTO', n: e.desc, h: e.date.split('T')[1], d: e.date.split('T')[0], index: i}))].sort((a,b) => new Date(a.d + 'T' + (a.h || "00:00")) - new Date(b.d + 'T' + (b.h || "00:00")));
+
+            let ultimaData = "";
+            agenda.forEach(item => {
+                if (item.d !== ultimaData) {
+                    listAge.innerHTML += `<div class="dia-semana-badge">${item.d.split('-').reverse().join('/')} - ${getDiaSemana(item.d)}</div>`;
+                    ultimaData = item.d;
+                }
+                
+                let acao = "";
+                let classeDestaque = item.tipo === 'PACIENTE' ? 'destaque-paciente' : '';
+                if(item.tipo === 'PACIENTE') {
+                    acao = !item.pago ? `<button onclick="confirmarPagamento(${item.index})" style="background:var(--success); color:white; border:none; border-radius:8px; padding:6px; margin-top:5px; font-size:10px; font-weight:bold">Confirmar Recebimento</button>` : `<span style="color:green;font-size:10px;font-weight:bold">✓ Já Pago</span>`;
+                }
+
+                listAge.innerHTML += `
+                    <div class="item-lista ${classeDestaque}">
+                        <div class="item-info">
+                            <b>${item.h || 'Todo dia'}</b> - ${item.n}<br>
+                            <small style="color:var(--gray)">[${item.tipo}] ${item.obs || ''}</small><br>${acao}
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-edit" onclick="editarItem('${item.tipo.toLowerCase()}', ${item.index})"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button class="btn-del" onclick="delItem('${item.tipo.toLowerCase()}', ${item.index})" style="opacity:0.3"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>`;
+            });
+
+            // DÍVIDAS
+            const divPend = document.getElementById('list-div-pendentes');
+            divPend.innerHTML = "<h4>Dívidas Pendentes</h4>";
+            db.div.forEach((d, i) => {
+                let dData = new Date(d.date + "T12:00:00");
+                let eFutura = dData.getFullYear() > anoAtual || (dData.getFullYear() === anoAtual && dData.getMonth() > mesAtual);
+                divPend.innerHTML += `
+                    <div class="item-lista ${eFutura ? 'divida-futura' : ''}" style="border-left-color:var(--warning)">
+                        <div class="item-info">
+                            <span>${d.desc} (R$ ${d.val.toFixed(2)}) ${d.fixa ? '<i class="fa-solid fa-rotate"></i>' : ''}</span><br>
+                            <small>Venc: ${d.date.split('-').reverse().join('/')}</small>
+                        </div>
+                        <div class="item-actions">
+                            <button class="btn-edit" onclick="editarItem('divida', ${i})"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button class="btn-primary" style="width:auto; padding:8px 12px; border-radius:8px; border:none; font-size:11px; font-weight:bold" onclick="payDiv(${i})">Pagar</button>
+                        </div>
+                    </div>`;
+            });
+
+            // RECEBER (Pendente)
+            const recPend = document.getElementById('list-rec-pendentes');
+            recPend.innerHTML = "";
+            db.futRec.forEach((r, i) => {
+                recPend.innerHTML += `
+                    <div class="item-lista" style="border-left-color:var(--success)">
+                        <div class="item-info">
+                            <span>${r.desc} (R$ ${r.val.toFixed(2)})</span><br>
+                            <small>Receber em: ${r.date.split('-').reverse().join('/')}</small>
+                        </div>
+                        <div class="item-actions">
+                             <button class="btn-edit" onclick="editarItem('futRec', ${i})"><i class="fa-solid fa-pen-to-square"></i></button>
+                             <button class="btn-success" style="width:auto; padding:8px 12px; border-radius:8px; border:none; font-size:11px; font-weight:bold" onclick="confirmarFutRec(${i})">Receber</button>
+                        </div>
+                    </div>`;
+            });
+
+            document.getElementById('list-historico').innerHTML = "<h4>Histórico</h4>" + db.his.map(h => `
+                <div style="font-size:12px; border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between">
+                    <span>${h.desc} <br><small>${h.d}</small></span> 
+                    <b style="color:${h.t==='in'?'green':'red'}">${h.t==='in'?'+':'-'} ${h.v.toFixed(2)}</b>
+                </div>
+            `).join('');
+
+            localStorage.setItem('jesystem_v14', JSON.stringify(db));
+            preencherNotificacoesHome();
+        }
+
+        function preencherNotificacoesHome() {
+            const area = document.getElementById('notif-content');
+            area.innerHTML = "";
+            const agora = new Date();
+            const hojeStr = agora.toISOString().split('T')[0];
+            let count = 0;
+
+            // 1. Alertar Comparecimento (1h depois)
+            db.pac.forEach((p, idx) => {
+                if(!p.pago) {
+                    let horaLimite = new Date(p.d + 'T' + p.h);
+                    horaLimite.setHours(horaLimite.getHours() + 1);
+                    if(agora > horaLimite) {
+                        area.innerHTML += `
+                            <div class="notif-item notif-warning" style="border-left-width:10px">
+                                <i class="fa-solid fa-person-circle-question" style="color:var(--warning)"></i>
+                                <div class="notif-text">
+                                    Compareceu? ${p.n}
+                                    <div style="margin-top:5px">
+                                        <button onclick="confirmarPagamento(${idx})" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">SIM</button>
+                                        <button onclick="delItem('paciente', ${idx})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">NÃO</button>
+                                    </div>
+                                </div>
+                            </div>`;
+                        count++;
+                    }
+                }
+            });
+
+            // 2. Dívidas e outros alertas
+            db.div.forEach(d => {
+                const venc = new Date(d.date + "T00:00:00");
+                if (agora > venc) {
+                    const diasAtraso = Math.floor((agora - venc) / (1000 * 60 * 60 * 24));
+                    area.innerHTML += `<div class="notif-item notif-danger"><i class="fa-solid fa-triangle-exclamation" style="color:var(--danger)"></i><div class="notif-text">${d.desc} <small>Atrasada há ${diasAtraso} dia(s)</small></div></div>`;
+                    count++;
+                }
+            });
+
+            // 3. Recebimentos Pendentes
+            db.futRec.forEach(r => {
+                if (r.date === hojeStr) {
+                    area.innerHTML += `<div class="notif-item notif-success"><i class="fa-solid fa-hand-holding-dollar" style="color:var(--primary)"></i><div class="notif-text">Receber hoje: ${r.desc} <small>R$ ${r.val.toFixed(2)}</small></div></div>`;
+                    count++;
+                }
+            });
+
+            if(count === 0) { area.innerHTML = "<p style='font-size:12px; color:var(--gray); text-align:center; margin-top:20px;'>Tudo em ordem por aqui! ✨</p>"; }
+        }
+
+        // FUNÇÕES DE LÓGICA
+        function finReg(t) {
+            let dI = t === 'in' ? document.getElementById('rec-desc') : document.getElementById('gas-desc');
+            let vI = t === 'in' ? document.getElementById('rec-val') : document.getElementById('gas-val');
+            if(!dI.value || !vI.value) return;
+            db.bal += (t === 'in' ? parseFloat(vI.value) : -parseFloat(vI.value));
+            db.his.unshift({desc: dI.value, v: parseFloat(vI.value), t, d: new Date().toLocaleString('pt-BR')});
+            dI.value = ""; vI.value = "";
+            render(); closeModal(t === 'in' ? 'mod-rec' : 'mod-gas');
+        }
+
+        function addPac() {
+            let d = document.getElementById('pac-date').value, h = document.getElementById('pac-time').value, n = document.getElementById('pac-nome').value, v = parseFloat(document.getElementById('pac-val').value) || 0, o = document.getElementById('pac-obs').value, p = document.getElementById('pac-pago').checked, idx = document.getElementById('edit-pac-idx').value;
+            if(!d || !h || !n) return alert("Preencha data, hora e nome!");
+            let conflito = db.pac.some((pac, i) => pac.d === d && pac.h === h && i.toString() !== idx);
+            if(conflito) return alert("⚠️ Conflito de Horário!");
+            
+            if(idx !== "") { db.pac[idx] = {d, h, n, v, obs: o, pago: p}; } else { db.pac.push({d, h, n, v, obs: o, pago: p}); }
+
+            // Se não foi pago, vai para a lista de receber
+            if(!p) {
+                db.futRec.push({date: d, desc: "Sessão: " + n, val: v, linkId: idx || (db.pac.length-1)});
+            }
+
+            document.getElementById('pac-date').value = ""; document.getElementById('pac-time').value = ""; document.getElementById('pac-nome').value = ""; document.getElementById('pac-val').value = ""; document.getElementById('pac-obs').value = ""; document.getElementById('pac-pago').checked = false;
+            render(); closeModal('mod-pac');
+        }
+
+        function addFutRec() {
+            let d = document.getElementById('frec-date').value, desc = document.getElementById('frec-desc').value, v = parseFloat(document.getElementById('frec-val').value), idx = document.getElementById('edit-frec-idx').value;
+            if(!d || !desc || isNaN(v)) return;
+            if(idx !== "") { db.futRec[idx] = {date: d, desc, val: v}; } else { db.futRec.push({date: d, desc, val: v}); }
+            document.getElementById('frec-date').value = ""; document.getElementById('frec-desc').value = ""; document.getElementById('frec-val').value = "";
+            render(); closeModal('mod-fut-rec');
+        }
+
+        function addEve() {
+            let date = document.getElementById('eve-date').value, desc = document.getElementById('eve-desc').value, idx = document.getElementById('edit-eve-idx').value;
+            if(!date || !desc) return alert("Preencha data e descrição!");
+            if(idx !== "") { db.eve[idx] = {date, desc}; } else { db.eve.push({date, desc}); }
+            document.getElementById('eve-date').value = ""; document.getElementById('eve-desc').value = "";
+            render(); closeModal('mod-eve');
+        }
+
+        function addDiv() {
+            let d = document.getElementById('div-date').value, desc = document.getElementById('div-desc').value, v = parseFloat(document.getElementById('div-val').value), f = document.getElementById('div-fixa').checked, idx = document.getElementById('edit-div-idx').value;
+            if(!d || !desc || isNaN(v)) return;
+            if(idx !== "") { db.div[idx] = {date: d, desc, val: v, fixa: f}; } else { db.div.push({date: d, desc, val: v, fixa: f}); }
+            document.getElementById('div-date').value = ""; document.getElementById('div-desc').value = ""; document.getElementById('div-val').value = ""; document.getElementById('div-fixa').checked = false;
+            render(); closeModal('mod-div');
+        }
+
+        function payDiv(i) {
+            let d = db.div[i]; db.bal -= d.val;
+            db.his.unshift({desc: "PAGO: "+d.desc, v: d.val, t: 'out', d: new Date().toLocaleDateString('pt-BR')});
+            if(d.fixa) { let dnt = new Date(d.date + "T12:00:00"); dnt.setMonth(dnt.getMonth() + 1); db.div.push({date: dnt.toISOString().split('T')[0], desc: d.desc, val: d.val, fixa: true}); }
+            db.div.splice(i, 1); render();
+        }
+
+        function confirmarFutRec(i) {
+            let r = db.futRec[i]; db.bal += r.val;
+            db.his.unshift({desc: "RECEBIDO: "+r.desc, v: r.val, t: 'in', d: new Date().toLocaleDateString('pt-BR')});
+            db.futRec.splice(i, 1); render();
+        }
+
+        function editarItem(tipo, idx) {
+            if(tipo === 'paciente') {
+                let p = db.pac[idx]; document.getElementById('tit-pac').innerText = "Editar Paciente"; document.getElementById('edit-pac-idx').value = idx;
+                document.getElementById('pac-date').value = p.d; document.getElementById('pac-time').value = p.h; document.getElementById('pac-nome').value = p.n; document.getElementById('pac-val').value = p.v; document.getElementById('pac-obs').value = p.obs; document.getElementById('pac-pago').checked = p.pago; openModal('mod-pac');
+            } else if(tipo === 'evento') {
+                let e = db.eve[idx]; document.getElementById('tit-eve').innerText = "Editar Evento"; document.getElementById('edit-eve-idx').value = idx;
+                document.getElementById('eve-date').value = e.date; document.getElementById('eve-desc').value = e.desc; openModal('mod-eve');
+            } else if(tipo === 'divida') {
+                let d = db.div[idx]; document.getElementById('tit-div').innerText = "Editar Conta"; document.getElementById('edit-div-idx').value = idx;
+                document.getElementById('div-date').value = d.date; document.getElementById('div-desc').value = d.desc; document.getElementById('div-val').value = d.val; document.getElementById('div-fixa').checked = d.fixa || false; openModal('mod-div');
+            } else if(tipo === 'futRec') {
+                let r = db.futRec[idx]; document.getElementById('edit-frec-idx').value = idx;
+                document.getElementById('frec-date').value = r.date; document.getElementById('frec-desc').value = r.desc; document.getElementById('frec-val').value = r.val; openModal('mod-fut-rec');
+            }
+        }
+
+        function confirmarPagamento(i) {
+            let p = db.pac[i];
+            db.bal += p.v;
+            db.his.unshift({desc: "Recebido: " + p.n, v: p.v, t: 'in', d: new Date().toLocaleDateString('pt-BR')});
+            db.pac[i].pago = true;
+            // Limpar da lista de "Receber" se existir
+            db.futRec = db.futRec.filter(r => r.desc !== "Sessão: " + p.n);
+            render();
+        }
+
+        function delItem(t, i) { 
+            if(confirm("Remover permanentemente?")) { 
+                if(t === 'paciente') {
+                    let p = db.pac[i];
+                    db.futRec = db.futRec.filter(r => r.desc !== "Sessão: " + p.n);
+                    db.pac.splice(i, 1);
+                } else if(t === 'eve') {
+                    db.eve.splice(i, 1);
+                } else if(t === 'divida') {
+                    db.div.splice(i, 1);
+                }
+                render(); 
+            } 
+        }
+
+        function togglePrivacidade() { oculto = !oculto; render(); }
+        function limparHistorico() { if(confirm("Limpar histórico?")) { db.his = []; render(); } }
+
+        function inputCalc(v) { document.getElementById('display').innerText === '0' ? document.getElementById('display').innerText = v : document.getElementById('display').innerText += v; }
+        function clearCalc() { document.getElementById('display').innerText = '0'; }
+        function backCalc() { let d = document.getElementById('display').innerText; document.getElementById('display').innerText = d.length > 1 ? d.slice(0, -1) : '0'; }
+        function calculate() { try { document.getElementById('display').innerText = eval(document.getElementById('display').innerText.replace('×', '*').replace('÷', '/')); } catch { document.getElementById('display').innerText = "Erro"; } }
+
+        window.onload = render;
+        setInterval(preencherNotificacoesHome, 60000); // Atualiza alertas a cada minuto
+    </script>
+</body>
+</html>
