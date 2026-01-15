@@ -146,6 +146,7 @@
             <span class="close-modal" onclick="closeModal('mod-eve')">&times;</span>
             <h3 id="tit-eve">Novo Evento</h3>
             <input type="hidden" id="edit-eve-idx" value="">
+            <input type="hidden" id="is-reagendar" value="false">
             <label>Data e Hora do Compromisso</label>
             <input type="datetime-local" id="eve-date">
             <label>O que é?</label>
@@ -276,7 +277,7 @@
             document.body.classList.remove('modal-open');
             document.getElementById(id).style.display = 'none'; 
             if(id === 'mod-pac') { document.getElementById('tit-pac').innerText = "Novo Paciente"; document.getElementById('edit-pac-idx').value = ""; }
-            if(id === 'mod-eve') { document.getElementById('tit-eve').innerText = "Novo Evento"; document.getElementById('edit-eve-idx').value = ""; }
+            if(id === 'mod-eve') { document.getElementById('tit-eve').innerText = "Novo Evento"; document.getElementById('edit-eve-idx').value = ""; document.getElementById('is-reagendar').value = "false"; }
             if(id === 'mod-div') { document.getElementById('tit-div').innerText = "Agendar Conta"; document.getElementById('edit-div-idx').value = ""; }
             if(id === 'mod-fut-rec') { document.getElementById('edit-frec-idx').value = ""; }
         }
@@ -498,9 +499,14 @@
             
             if(idx !== "") { 
                 let pac = db.pac[idx];
-                db.pac[idx] = {d, h, n, v, obs: o, pago: p, compareceu: pac.compareceu === undefined ? null : pac.compareceu, cancelado: pac.cancelado || false}; 
+                db.pac[idx] = {
+                    d, h, n, v, obs: o, pago: p, 
+                    compareceu: pac.compareceu === undefined ? null : pac.compareceu, 
+                    cancelado: pac.cancelado || false,
+                    notificado2h: pac.notificado2h || false
+                }; 
             } else { 
-                db.pac.push({d, h, n, v, obs: o, pago: p, compareceu: null, cancelado: false}); 
+                db.pac.push({d, h, n, v, obs: o, pago: p, compareceu: null, cancelado: false, notificado2h: false}); 
                 pacIndex = db.pac.length - 1;
             }
 
@@ -527,15 +533,36 @@
 
         function addEve() {
             let date = document.getElementById('eve-date').value, desc = document.getElementById('eve-desc').value, idx = document.getElementById('edit-eve-idx').value;
+            let isReagendar = document.getElementById('is-reagendar').value === 'true';
+            
             if(!date || !desc) return alert("Preencha data e descrição!");
-            if(idx !== "") { 
+            
+            if(isReagendar && idx !== "") {
+                // Reagendamento: cria novo evento e mantém o antigo como cancelado
+                db.eve.push({date, desc, aconteceu: null, cancelado: false, obsCancelamento: "", notificadoAmanha: false, notificado2h: false});
+                // Mantém o evento antigo como cancelado no histórico
+            } else if(idx !== "") { 
+                // Edição normal
                 let evt = db.eve[idx];
-                db.eve[idx] = {date, desc, aconteceu: evt.aconteceu, cancelado: evt.cancelado, obsCancelamento: evt.obsCancelamento}; 
+                db.eve[idx] = {
+                    date, 
+                    desc, 
+                    aconteceu: evt.aconteceu, 
+                    cancelado: evt.cancelado, 
+                    obsCancelamento: evt.obsCancelamento,
+                    notificadoAmanha: evt.notificadoAmanha || false,
+                    notificado2h: evt.notificado2h || false
+                }; 
             } else { 
-                db.eve.push({date, desc, aconteceu: null, cancelado: false, obsCancelamento: ""}); 
+                // Novo evento
+                db.eve.push({date, desc, aconteceu: null, cancelado: false, obsCancelamento: "", notificadoAmanha: false, notificado2h: false}); 
             }
-            document.getElementById('eve-date').value = ""; document.getElementById('eve-desc').value = "";
-            render(); closeModal('mod-eve');
+            
+            document.getElementById('eve-date').value = ""; 
+            document.getElementById('eve-desc').value = "";
+            document.getElementById('is-reagendar').value = "false";
+            render(); 
+            closeModal('mod-eve');
         }
 
         function confirmarEvento(i, aconteceu) {
@@ -556,6 +583,7 @@
             let e = db.eve[i];
             document.getElementById('tit-eve').innerText = "Reagendar Evento";
             document.getElementById('edit-eve-idx').value = i;
+            document.getElementById('is-reagendar').value = "true";
             document.getElementById('eve-date').value = "";
             document.getElementById('eve-desc').value = e.desc;
             openModal('mod-eve');
@@ -766,6 +794,9 @@
 
             const agora = new Date();
             const hojeStr = agora.toISOString().split('T')[0];
+            const amanha = new Date(agora);
+            amanha.setDate(amanha.getDate() + 1);
+            const amanhaStr = amanha.toISOString().split('T')[0];
 
             // Dívidas atrasadas
             db.div.forEach(d => {
@@ -780,6 +811,19 @@
                 }
             });
 
+            // Dívidas do dia seguinte
+            db.div.forEach(d => {
+                if (d.notificadoAmanha === undefined) d.notificadoAmanha = false;
+                if (d.date === amanhaStr && !d.notificadoAmanha) {
+                    enviarNotificacao(
+                        'Dívida Amanhã',
+                        `${d.desc} vence amanhã - R$ ${d.val.toFixed(2)}`,
+                        `divida-amanha-${d.date}`
+                    );
+                    d.notificadoAmanha = true;
+                }
+            });
+
             // Recebimentos do dia
             db.futRec.forEach(r => {
                 if (r.date === hojeStr) {
@@ -788,6 +832,63 @@
                         `${r.desc} - R$ ${r.val.toFixed(2)}`,
                         `receber-${r.date}`
                     );
+                }
+            });
+
+            // Eventos do dia seguinte
+            db.eve.forEach((e, idx) => {
+                if (e.notificadoAmanha === undefined) e.notificadoAmanha = false;
+                if (e.notificado2h === undefined) e.notificado2h = false;
+                if (!e.cancelado && e.aconteceu !== false) {
+                    const evtDate = new Date(e.date);
+                    const evtDateStr = evtDate.toISOString().split('T')[0];
+                    if (evtDateStr === amanhaStr && !e.notificadoAmanha) {
+                        const hora = evtDate.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+                        enviarNotificacao(
+                            'Evento Amanhã',
+                            `${e.desc} - ${hora}`,
+                            `evento-amanha-${e.date}`
+                        );
+                        e.notificadoAmanha = true;
+                    }
+                }
+            });
+
+            // Notificação 2h antes de eventos
+            db.eve.forEach((e, idx) => {
+                if (!e.cancelado && e.aconteceu !== false) {
+                    const evtDateTime = new Date(e.date);
+                    const duasHorasAntes = new Date(evtDateTime.getTime() - (2 * 60 * 60 * 1000));
+                    const agoraMais2min = new Date(agora.getTime() + (2 * 60 * 1000));
+                    
+                    if (agora >= duasHorasAntes && agora <= agoraMais2min && !e.notificado2h) {
+                        const hora = evtDateTime.toLocaleTimeString('pt-BR', {hour: '2-digit', minute: '2-digit'});
+                        enviarNotificacao(
+                            'Evento em 2h',
+                            `${e.desc} - ${hora}`,
+                            `evento-2h-${e.date}`
+                        );
+                        e.notificado2h = true;
+                    }
+                }
+            });
+
+            // Notificação 2h antes de pacientes
+            db.pac.forEach((p, idx) => {
+                if (p.notificado2h === undefined) p.notificado2h = false;
+                if (!p.cancelado && p.compareceu !== false) {
+                    const pacDateTime = new Date(p.d + 'T' + p.h);
+                    const duasHorasAntes = new Date(pacDateTime.getTime() - (2 * 60 * 60 * 1000));
+                    const agoraMais2min = new Date(agora.getTime() + (2 * 60 * 1000));
+                    
+                    if (agora >= duasHorasAntes && agora <= agoraMais2min && !p.notificado2h) {
+                        enviarNotificacao(
+                            'Atendimento em 2h',
+                            `${p.n} - ${p.h}`,
+                            `paciente-2h-${p.d}-${p.h}`
+                        );
+                        p.notificado2h = true;
+                    }
                 }
             });
 
@@ -805,6 +906,9 @@
                     }
                 }
             });
+
+            // Salvar mudanças de flags de notificação
+            localStorage.setItem('jesystem_v14', JSON.stringify(db));
         }
 
         window.onload = function() {
