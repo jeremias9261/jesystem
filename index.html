@@ -217,6 +217,7 @@
             <span class="close-modal" onclick="closeModal('mod-age')">&times;</span>
             <h3>Agenda Unificada</h3>
             <div id="list-agenda"></div>
+            <button class="btn btn-danger" onclick="limparHistoricoAgenda()" style="font-size: 12px; padding: 10px; margin-top: 15px;">Limpar Histórico da Agenda</button>
         </div>
     </div>
 
@@ -370,7 +371,7 @@
                         </div>
                         <div class="item-actions">
                             <button class="btn-edit" onclick="editarItem('${item.tipo.toLowerCase()}', ${item.index})"><i class="fa-solid fa-pen-to-square"></i></button>
-                            <button class="btn-del" onclick="delItem('${item.tipo.toLowerCase()}', ${item.index})" style="opacity:0.3"><i class="fa-solid fa-trash"></i></button>
+                            <button class="btn-del" onclick="delItemAgenda('${item.tipo}', ${item.index})" style="opacity:0.3"><i class="fa-solid fa-trash"></i></button>
                         </div>
                     </div>`;
             });
@@ -729,6 +730,32 @@
 
         function togglePrivacidade() { oculto = !oculto; render(); }
         function limparHistorico() { if(confirm("Limpar histórico?")) { db.his = []; render(); } }
+
+        function limparHistoricoAgenda() { 
+            if(confirm("Limpar histórico completo da agenda?\nIsso removerá TODOS os pacientes e eventos.")) { 
+                db.pac = []; 
+                db.eve = []; 
+                db.futRec = [];
+                render(); 
+            } 
+        }
+
+        function delItemAgenda(tipo, i) {
+            if(confirm("Remover permanentemente?")) {
+                if(tipo === 'PACIENTE') {
+                    let p = db.pac[i];
+                    if(p) {
+                        db.futRec = db.futRec.filter(r => !(r.desc === "Sessão: " + p.n && r.linkId === i));
+                        db.pac.splice(i, 1);
+                    }
+                } else if(tipo === 'EVENTO') {
+                    if(db.eve[i]) {
+                        db.eve.splice(i, 1);
+                    }
+                }
+                render();
+            }
+        }
 
         function inputCalc(v) { document.getElementById('display').innerText === '0' ? document.getElementById('display').innerText = v : document.getElementById('display').innerText += v; }
         function clearCalc() { document.getElementById('display').innerText = '0'; }
