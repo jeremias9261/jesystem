@@ -311,7 +311,7 @@
             // AGENDA
             const listAge = document.getElementById('list-agenda');
             listAge.innerHTML = "";
-            let agenda = [...db.pac.map((p, i) => ({...p, tipo: 'PACIENTE', index: i})),...db.eve.map((e, i) => ({...e, tipo: 'EVENTO', n: e.desc, h: e.date.split('T')[1], d: e.date.split('T')[0], index: i}))].sort((a,b) => new Date(a.d + 'T' + (a.h || "00:00")) - new Date(b.d + 'T' + (b.h || "00:00")));
+            let agenda = [...db.pac.map((p, i) => ({...p, tipo: 'PACIENTE', index: i, compareceu: p.compareceu === undefined ? null : p.compareceu, cancelado: p.cancelado || false})),...db.eve.map((e, i) => ({...e, tipo: 'EVENTO', n: e.desc, h: e.date.split('T')[1], d: e.date.split('T')[0], index: i, aconteceu: e.aconteceu === undefined ? null : e.aconteceu, cancelado: e.cancelado || false}))].sort((a,b) => new Date(a.d + 'T' + (a.h || "00:00")) - new Date(b.d + 'T' + (b.h || "00:00")));
 
             let ultimaData = "";
             agenda.forEach(item => {
@@ -321,16 +321,51 @@
                 }
                 
                 let acao = "";
+                let statusBadge = "";
                 let classeDestaque = item.tipo === 'PACIENTE' ? 'destaque-paciente' : '';
+                
                 if(item.tipo === 'PACIENTE') {
-                    acao = !item.pago ? `<button onclick="confirmarPagamento(${item.index})" style="background:var(--success); color:white; border:none; border-radius:8px; padding:6px; margin-top:5px; font-size:10px; font-weight:bold">Confirmar Recebimento</button>` : `<span style="color:green;font-size:10px;font-weight:bold">✓ Já Pago</span>`;
+                    if(item.cancelado) {
+                        statusBadge = `<span style="color:var(--danger);font-size:10px;font-weight:bold">✗ Atendimento Cancelado</span>`;
+                    } else if(item.compareceu === true) {
+                        if(item.pago) {
+                            statusBadge = `<span style="color:var(--success);font-size:10px;font-weight:bold">✓ Compareceu e Pago</span>`;
+                        } else {
+                            statusBadge = `<span style="color:var(--warning);font-size:10px;font-weight:bold">✓ Compareceu - Aguardando Pagamento</span>`;
+                            acao = `<button onclick="confirmarPagamento(${item.index})" style="background:var(--success); color:white; border:none; border-radius:8px; padding:6px; margin-top:5px; font-size:10px; font-weight:bold">Confirmar Pagamento</button>`;
+                        }
+                    } else {
+                        acao = `<div style="margin-top:5px; display:flex; gap:5px;">
+                            <button onclick="confirmarComparecimento(${item.index}, true)" style="background:var(--success); color:white; border:none; border-radius:8px; padding:6px; font-size:10px; font-weight:bold">Compareceu</button>
+                            <button onclick="confirmarComparecimento(${item.index}, false)" style="background:var(--danger); color:white; border:none; border-radius:8px; padding:6px; font-size:10px; font-weight:bold">Não Compareceu</button>
+                        </div>`;
+                    }
+                } else if(item.tipo === 'EVENTO') {
+                    if(item.cancelado) {
+                        statusBadge = `<span style="color:var(--danger);font-size:10px;font-weight:bold">✗ Cancelado</span>`;
+                        if(item.obsCancelamento) {
+                            statusBadge += `<br><small style="color:var(--gray)">Obs: ${item.obsCancelamento}</small>`;
+                        }
+                        acao = `<button onclick="reagendarEvento(${item.index})" style="background:var(--primary); color:white; border:none; border-radius:8px; padding:6px; margin-top:5px; font-size:10px; font-weight:bold">Reagendar</button>`;
+                    } else if(item.aconteceu === true) {
+                        statusBadge = `<span style="color:var(--success);font-size:10px;font-weight:bold">✓ Aconteceu</span>`;
+                    } else if(item.aconteceu === false) {
+                        statusBadge = `<span style="color:var(--danger);font-size:10px;font-weight:bold">✗ Não Aconteceu</span>`;
+                    } else {
+                        acao = `<div style="margin-top:5px; display:flex; gap:5px;">
+                            <button onclick="confirmarEvento(${item.index}, true)" style="background:var(--success); color:white; border:none; border-radius:8px; padding:6px; font-size:10px; font-weight:bold">Aconteceu</button>
+                            <button onclick="confirmarEvento(${item.index}, false)" style="background:var(--danger); color:white; border:none; border-radius:8px; padding:6px; font-size:10px; font-weight:bold">Cancelar</button>
+                        </div>`;
+                    }
                 }
 
                 listAge.innerHTML += `
-                    <div class="item-lista ${classeDestaque}">
+                    <div class="item-lista ${classeDestaque}" style="${item.cancelado ? 'opacity:0.7;' : ''}">
                         <div class="item-info">
                             <b>${item.h || 'Todo dia'}</b> - ${item.n}<br>
-                            <small style="color:var(--gray)">[${item.tipo}] ${item.obs || ''}</small><br>${acao}
+                            <small style="color:var(--gray)">[${item.tipo}] ${item.obs || ''}</small><br>
+                            ${statusBadge}
+                            ${acao}
                         </div>
                         <div class="item-actions">
                             <button class="btn-edit" onclick="editarItem('${item.tipo.toLowerCase()}', ${item.index})"><i class="fa-solid fa-pen-to-square"></i></button>
@@ -375,10 +410,16 @@
                     </div>`;
             });
 
-            document.getElementById('list-historico').innerHTML = "<h4>Histórico</h4>" + db.his.map(h => `
-                <div style="font-size:12px; border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between">
+            document.getElementById('list-historico').innerHTML = "<h4>Histórico</h4>" + db.his.map((h, idx) => `
+                <div style="font-size:12px; border-bottom:1px solid #eee; padding:8px 0; display:flex; justify-content:space-between; align-items:center">
                     <span>${h.desc} <br><small>${h.d}</small></span> 
-                    <b style="color:${h.t==='in'?'green':'red'}">${h.t==='in'?'+':'-'} ${h.v.toFixed(2)}</b>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <b style="color:${h.t==='in'?'green':'red'}">${h.t==='in'?'+':'-'} R$ ${h.v.toFixed(2)}</b>
+                        ${h.t === 'in' ? `
+                            <button onclick="editarReceita(${idx})" style="background:none; border:none; color:var(--primary); font-size:16px; cursor:pointer; padding:4px;" title="Editar"><i class="fa-solid fa-pen-to-square"></i></button>
+                            <button onclick="deletarReceita(${idx})" style="background:none; border:none; color:var(--danger); font-size:16px; cursor:pointer; padding:4px;" title="Deletar"><i class="fa-solid fa-trash"></i></button>
+                        ` : ''}
+                    </div>
                 </div>
             `).join('');
 
@@ -395,7 +436,7 @@
 
             // 1. Alertar Comparecimento (1h depois)
             db.pac.forEach((p, idx) => {
-                if(!p.pago) {
+                if(p.compareceu === null || p.compareceu === undefined) {
                     let horaLimite = new Date(p.d + 'T' + p.h);
                     horaLimite.setHours(horaLimite.getHours() + 1);
                     if(agora > horaLimite) {
@@ -405,8 +446,8 @@
                                 <div class="notif-text">
                                     Compareceu? ${p.n}
                                     <div style="margin-top:5px">
-                                        <button onclick="confirmarPagamento(${idx})" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">SIM</button>
-                                        <button onclick="delItem('paciente', ${idx})" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">NÃO</button>
+                                        <button onclick="confirmarComparecimento(${idx}, true)" style="background:var(--success); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">SIM</button>
+                                        <button onclick="confirmarComparecimento(${idx}, false)" style="background:var(--danger); color:white; border:none; padding:4px 8px; border-radius:5px; font-size:10px">NÃO</button>
                                     </div>
                                 </div>
                             </div>`;
@@ -453,11 +494,23 @@
             let conflito = db.pac.some((pac, i) => pac.d === d && pac.h === h && i.toString() !== idx);
             if(conflito) return alert("⚠️ Conflito de Horário!");
             
-            if(idx !== "") { db.pac[idx] = {d, h, n, v, obs: o, pago: p}; } else { db.pac.push({d, h, n, v, obs: o, pago: p}); }
+            let pacIndex = idx !== "" ? parseInt(idx) : db.pac.length - 1;
+            
+            if(idx !== "") { 
+                let pac = db.pac[idx];
+                db.pac[idx] = {d, h, n, v, obs: o, pago: p, compareceu: pac.compareceu === undefined ? null : pac.compareceu, cancelado: pac.cancelado || false}; 
+            } else { 
+                db.pac.push({d, h, n, v, obs: o, pago: p, compareceu: null, cancelado: false}); 
+                pacIndex = db.pac.length - 1;
+            }
 
-            // Se não foi pago, vai para a lista de receber
-            if(!p) {
-                db.futRec.push({date: d, desc: "Sessão: " + n, val: v, linkId: idx || (db.pac.length-1)});
+            // Remove existente se houver (para evitar duplicatas)
+            db.futRec = db.futRec.filter(r => !(r.desc === "Sessão: " + n && r.linkId === pacIndex));
+            
+            // Se já está pago ou cancelado, não adiciona ao futRec
+            // Se não foi pago e já compareceu, adiciona para receber
+            if(!p && !db.pac[pacIndex].cancelado && db.pac[pacIndex].compareceu === true) {
+                db.futRec.push({date: d, desc: "Sessão: " + n, val: v, linkId: pacIndex});
             }
 
             document.getElementById('pac-date').value = ""; document.getElementById('pac-time').value = ""; document.getElementById('pac-nome').value = ""; document.getElementById('pac-val').value = ""; document.getElementById('pac-obs').value = ""; document.getElementById('pac-pago').checked = false;
@@ -475,9 +528,37 @@
         function addEve() {
             let date = document.getElementById('eve-date').value, desc = document.getElementById('eve-desc').value, idx = document.getElementById('edit-eve-idx').value;
             if(!date || !desc) return alert("Preencha data e descrição!");
-            if(idx !== "") { db.eve[idx] = {date, desc}; } else { db.eve.push({date, desc}); }
+            if(idx !== "") { 
+                let evt = db.eve[idx];
+                db.eve[idx] = {date, desc, aconteceu: evt.aconteceu, cancelado: evt.cancelado, obsCancelamento: evt.obsCancelamento}; 
+            } else { 
+                db.eve.push({date, desc, aconteceu: null, cancelado: false, obsCancelamento: ""}); 
+            }
             document.getElementById('eve-date').value = ""; document.getElementById('eve-desc').value = "";
             render(); closeModal('mod-eve');
+        }
+
+        function confirmarEvento(i, aconteceu) {
+            let e = db.eve[i];
+            if (!aconteceu) {
+                let obs = prompt("Motivo do cancelamento (opcional):");
+                db.eve[i].aconteceu = false;
+                db.eve[i].cancelado = true;
+                db.eve[i].obsCancelamento = obs || "";
+            } else {
+                db.eve[i].aconteceu = true;
+                db.eve[i].cancelado = false;
+            }
+            render();
+        }
+
+        function reagendarEvento(i) {
+            let e = db.eve[i];
+            document.getElementById('tit-eve').innerText = "Reagendar Evento";
+            document.getElementById('edit-eve-idx').value = i;
+            document.getElementById('eve-date').value = "";
+            document.getElementById('eve-desc').value = e.desc;
+            openModal('mod-eve');
         }
 
         function addDiv() {
@@ -496,15 +577,23 @@
         }
 
         function confirmarFutRec(i) {
-            let r = db.futRec[i]; db.bal += r.val;
+            let r = db.futRec[i]; 
+            db.bal += r.val;
             db.his.unshift({desc: "RECEBIDO: "+r.desc, v: r.val, t: 'in', d: new Date().toLocaleDateString('pt-BR')});
-            db.futRec.splice(i, 1); render();
+            
+            // Se for uma sessão vinculada a um paciente, marca como pago
+            if(r.linkId !== undefined && db.pac[r.linkId]) {
+                db.pac[r.linkId].pago = true;
+            }
+            
+            db.futRec.splice(i, 1); 
+            render();
         }
 
         function editarItem(tipo, idx) {
             if(tipo === 'paciente') {
                 let p = db.pac[idx]; document.getElementById('tit-pac').innerText = "Editar Paciente"; document.getElementById('edit-pac-idx').value = idx;
-                document.getElementById('pac-date').value = p.d; document.getElementById('pac-time').value = p.h; document.getElementById('pac-nome').value = p.n; document.getElementById('pac-val').value = p.v; document.getElementById('pac-obs').value = p.obs; document.getElementById('pac-pago').checked = p.pago; openModal('mod-pac');
+                document.getElementById('pac-date').value = p.d; document.getElementById('pac-time').value = p.h; document.getElementById('pac-nome').value = p.n; document.getElementById('pac-val').value = p.v; document.getElementById('pac-obs').value = p.obs || ""; document.getElementById('pac-pago').checked = p.pago || false; openModal('mod-pac');
             } else if(tipo === 'evento') {
                 let e = db.eve[idx]; document.getElementById('tit-eve').innerText = "Editar Evento"; document.getElementById('edit-eve-idx').value = idx;
                 document.getElementById('eve-date').value = e.date; document.getElementById('eve-desc').value = e.desc; openModal('mod-eve');
@@ -517,13 +606,81 @@
             }
         }
 
+        function editarReceita(idx) {
+            let h = db.his[idx];
+            if(h.t !== 'in') return alert("Apenas receitas podem ser editadas aqui!");
+            
+            let novaDesc = prompt("Nova descrição:", h.desc);
+            if(novaDesc === null) return;
+            
+            let novoValor = prompt("Novo valor:", h.v);
+            if(novoValor === null) return;
+            novoValor = parseFloat(novoValor);
+            if(isNaN(novoValor)) return alert("Valor inválido!");
+            
+            // Ajusta o saldo
+            let diferenca = novoValor - h.v;
+            db.bal += diferenca;
+            
+            // Atualiza o histórico
+            db.his[idx].desc = novaDesc;
+            db.his[idx].v = novoValor;
+            
+            render();
+        }
+
+        function deletarReceita(idx) {
+            let h = db.his[idx];
+            if(h.t !== 'in') return alert("Apenas receitas podem ser deletadas aqui!");
+            
+            if(!confirm(`Deseja remover esta receita?\n${h.desc} - R$ ${h.v.toFixed(2)}`)) return;
+            
+            // Ajusta o saldo
+            db.bal -= h.v;
+            
+            // Remove do histórico
+            db.his.splice(idx, 1);
+            
+            render();
+        }
+
+        function confirmarComparecimento(i, compareceu) {
+            let p = db.pac[i];
+            db.pac[i].compareceu = compareceu;
+            
+            if (compareceu) {
+                // Se compareceu e já está pago: só confirma comparecimento
+                if (p.pago) {
+                    // Apenas marca como comparecido, não altera ganhos
+                } else {
+                    // Se compareceu mas não pagou: adiciona ao extrato para confirmar pagamento depois
+                    // Não adiciona automaticamente aos ganhos, apenas deixa disponível para confirmar depois
+                    // Verifica se já existe na lista de receber
+                    let jaExiste = db.futRec.some(r => r.desc === "Sessão: " + p.n && r.linkId === i);
+                    if (!jaExiste) {
+                        db.futRec.push({date: p.d, desc: "Sessão: " + p.n, val: p.v, linkId: i});
+                    }
+                }
+            } else {
+                // Não compareceu: marca como cancelado e remove do "a receber"
+                db.pac[i].cancelado = true;
+                db.futRec = db.futRec.filter(r => !(r.desc === "Sessão: " + p.n && r.linkId === i));
+            }
+            render();
+        }
+
         function confirmarPagamento(i) {
             let p = db.pac[i];
+            // Esta função agora é usada apenas quando quer confirmar o pagamento de um paciente que já compareceu
+            if (p.compareceu !== true) {
+                alert("Confirme primeiro o comparecimento!");
+                return;
+            }
             db.bal += p.v;
             db.his.unshift({desc: "Recebido: " + p.n, v: p.v, t: 'in', d: new Date().toLocaleDateString('pt-BR')});
             db.pac[i].pago = true;
             // Limpar da lista de "Receber" se existir
-            db.futRec = db.futRec.filter(r => r.desc !== "Sessão: " + p.n);
+            db.futRec = db.futRec.filter(r => !(r.desc === "Sessão: " + p.n && r.linkId === i));
             render();
         }
 
@@ -636,13 +793,13 @@
 
             // Comparecimento de paciente (1h depois do horário)
             db.pac.forEach((p, idx) => {
-                if (!p.pago) {
+                if (p.compareceu === null || p.compareceu === undefined) {
                     let horaLimite = new Date(p.d + 'T' + p.h);
                     horaLimite.setHours(horaLimite.getHours() + 1);
                     if (agora > horaLimite) {
                         enviarNotificacao(
                             'Comparecimento?',
-                            `${p.n} compareceu? Confirme o recebimento.`,
+                            `${p.n} compareceu? Confirme o comparecimento.`,
                             `paciente-${p.d}-${p.h}`
                         );
                     }
