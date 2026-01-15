@@ -716,9 +716,9 @@
             if(confirm("Remover permanentemente?")) { 
                 if(t === 'paciente') {
                     let p = db.pac[i];
-                    db.futRec = db.futRec.filter(r => r.desc !== "Sessão: " + p.n);
+                    db.futRec = db.futRec.filter(r => !(r.desc === "Sessão: " + p.n && r.linkId === i));
                     db.pac.splice(i, 1);
-                } else if(t === 'eve') {
+                } else if(t === 'eve' || t === 'evento') {
                     db.eve.splice(i, 1);
                 } else if(t === 'divida') {
                     db.div.splice(i, 1);
